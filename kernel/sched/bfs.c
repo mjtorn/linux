@@ -1783,12 +1783,14 @@ static inline void init_schedstats(void) {}
  */
 void wake_up_new_task(struct task_struct *p)
 {
-	struct task_struct *parent;
+	struct task_struct *parent, *rq_curr;
+	struct rq *rq, *new_rq;
 	unsigned long flags;
-	struct rq *rq;
+	int cpu;
 
 	parent = p->parent;
 	rq = task_grq_lock(p, &flags);
+	rq_curr = rq->curr;
 
 	/*
 	 * Reinit new task deadline as its creator deadline could have changed
@@ -1796,22 +1798,28 @@ void wake_up_new_task(struct task_struct *p)
 	 */
 	p->deadline = rq->rq_deadline;
 
+	cpu = rq->cpu;
+	/* The new task might not be able to run on the same CPU as rq->curr */
+	if (unlikely(!cpumask_test_cpu(cpu, tsk_cpus_allowed(p)))) {
+		cpu = cpumask_any(tsk_cpus_allowed(p));
+		new_rq = cpu_rq(cpu);
+	} else
+		new_rq = rq;
+
 	/*
 	 * If the task is a new process, current and parent are the same. If
 	 * the task is a new thread in the thread group, it will have much more
 	 * in common with current than with the parent.
 	 */
-	set_task_cpu(p, task_cpu(rq->curr));
+	set_task_cpu(p, cpu);
 
 	/*
 	 * Make sure we do not leak PI boosting priority to the child.
 	 */
-	p->prio = rq->curr->normal_prio;
+	p->prio = rq_curr->normal_prio;
 
 	activate_task(p, rq);
 	trace_sched_wakeup_new(p);
-	if (unlikely(p->policy == SCHED_FIFO))
-		goto after_ts_init;
 
 	/*
 	 * Share the timeslice between parent and child, thus the
@@ -1823,31 +1831,37 @@ void wake_up_new_task(struct task_struct *p)
 	 * is always equal to current->deadline.
 	 */
 	p->last_ran = rq->rq_last_ran;
-	if (likely(rq->rq_time_slice >= RESCHED_US * 2)) {
+	if (likely(rq_curr->policy != SCHED_FIFO)) {
 		rq->rq_time_slice /= 2;
-		p->time_slice = rq->rq_time_slice;
-after_ts_init:
-		if (rq->curr == parent && !suitable_idle_cpus(p)) {
+		if (unlikely(rq->rq_time_slice < RESCHED_US)) {
 			/*
-			 * The VM isn't cloned, so we're in a good position to
-			 * do child-runs-first in anticipation of an exec. This
-			 * usually avoids a lot of COW overhead.
+			 * Forking task has run out of timeslice. Reschedule it and
+			 * start its child with a new time slice and deadline. The
+			 * child will end up running first because its deadline will
+			 * be slightly earlier.
 			 */
-			__set_tsk_resched(parent);
-		} else
-			try_preempt(p, rq);
-	} else {
-		if (rq->curr == parent) {
-			/*
-		 	* Forking task has run out of timeslice. Reschedule it and
-		 	* start its child with a new time slice and deadline. The
-		 	* child will end up running first because its deadline will
-		 	* be slightly earlier.
-		 	*/
 			rq->rq_time_slice = 0;
-			__set_tsk_resched(parent);
+			__set_tsk_resched(rq_curr);
+			time_slice_expired(p);
+			if (suitable_idle_cpus(p))
+				resched_best_idle(p);
+			else if (unlikely(rq != new_rq))
+				try_preempt(p, new_rq);
+		} else {
+			p->time_slice = rq->rq_time_slice;
+			if (rq_curr == parent && rq == new_rq && !suitable_idle_cpus(p)) {
+				/*
+				 * The VM isn't cloned, so we're in a good position to
+				 * do child-runs-first in anticipation of an exec. This
+				 * usually avoids a lot of COW overhead.
+				 */
+				__set_tsk_resched(rq_curr);
+			} else
+				try_preempt(p, new_rq);
 		}
+	} else {
 		time_slice_expired(p);
+		try_preempt(p, new_rq);
 	}
 	task_grq_unlock(&flags);
 }
