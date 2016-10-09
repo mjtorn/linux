@@ -1371,7 +1371,7 @@ static void try_preempt(struct task_struct *p, struct rq *this_rq)
 
 		dl = rq->rq_deadline;
 		if (!sched_interactive && pcpu != cpu)
-			dl <<= locality_diff(pcpu, rq);
+			dl >>= locality_diff(pcpu, rq);
 		if (rq_prio > highest_prio ||
 		    deadline_after(dl, latest_deadline)) {
 			latest_deadline = dl;
