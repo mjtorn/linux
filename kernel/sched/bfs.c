@@ -3758,8 +3758,8 @@ EXPORT_SYMBOL(default_wake_function);
 void rt_mutex_setprio(struct task_struct *p, int prio)
 {
 	unsigned long flags;
-	int queued, oldprio;
 	struct rq *rq;
+	int oldprio;
 
 	BUG_ON(prio < 0 || prio > MAX_PRIO);
 
@@ -3785,17 +3785,16 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 
 	trace_sched_pi_setprio(p, prio);
 	oldprio = p->prio;
-	queued = task_queued(p);
-	if (queued)
-		dequeue_task(p);
 	p->prio = prio;
-	if (task_running(p) && prio > oldprio)
-		resched_task(p);
-	if (queued) {
+	if (task_running(p)){
+		if (prio > oldprio)
+			resched_task(p);
+	} else if (task_queued(p)) {
+		dequeue_task(p);
 		enqueue_task(p, rq);
-		try_preempt(p, rq);
+		if (prio < oldprio)
+			try_preempt(p, rq);
 	}
-
 out_unlock:
 	task_grq_unlock(&flags);
 }
@@ -3813,7 +3812,7 @@ static inline void adjust_deadline(struct task_struct *p, int new_prio)
 
 void set_user_nice(struct task_struct *p, long nice)
 {
-	int queued, new_static, old_static;
+	int new_static, old_static;
 	unsigned long flags;
 	struct rq *rq;
 
@@ -3835,16 +3834,14 @@ void set_user_nice(struct task_struct *p, long nice)
 		p->static_prio = new_static;
 		goto out_unlock;
 	}
-	queued = task_queued(p);
-	if (queued)
-		dequeue_task(p);
 
 	adjust_deadline(p, new_static);
 	old_static = p->static_prio;
 	p->static_prio = new_static;
 	p->prio = effective_prio(p);
 
-	if (queued) {
+	if (task_queued(p)) {
+		dequeue_task(p);
 		enqueue_task(p, rq);
 		if (new_static < old_static)
 			try_preempt(p, rq);
@@ -3994,11 +3991,17 @@ static void __setscheduler(struct task_struct *p, struct rq *rq, int policy,
 		p->prio = rt_mutex_get_effective_prio(p, p->normal_prio);
 	} else
 		p->prio = p->normal_prio;
+
 	if (task_running(p)) {
 		reset_rq_task(rq, p);
 		/* Resched only if we might now be preempted */
-		if (p->prio > oldprio || p->rt_priority > oldrtprio)
+		if (p->prio > oldprio || p->rt_priority < oldrtprio)
 			resched_task(p);
+	} else if (task_queued(p)) {
+		dequeue_task(p);
+		enqueue_task(p, rq);
+		if (p->prio < oldprio || p->rt_priority > oldrtprio)
+			try_preempt(p, rq);
 	}
 }
 
@@ -4023,8 +4026,8 @@ __sched_setscheduler(struct task_struct *p, int policy,
 		     const struct sched_param *param, bool user, bool pi)
 {
 	struct sched_param zero_param = { .sched_priority = 0 };
-	int queued, retval, oldpolicy = -1;
 	unsigned long flags, rlim_rtprio = 0;
+	int retval, oldpolicy = -1;
 	int reset_on_fork;
 	struct rq *rq;
 
@@ -4172,14 +4175,7 @@ recheck:
 	update_clocks(rq);
 	p->sched_reset_on_fork = reset_on_fork;
 
-	queued = task_queued(p);
-	if (queued)
-		dequeue_task(p);
 	__setscheduler(p, rq, policy, param->sched_priority, pi);
-	if (queued) {
-		enqueue_task(p, rq);
-		try_preempt(p, rq);
-	}
 	__task_grq_unlock();
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 
@@ -5368,6 +5364,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 {
 	const struct cpumask *cpu_valid_mask = cpu_active_mask;
 	bool running_wrong = false;
+	struct cpumask old_mask;
 	bool queued = false;
 	unsigned long flags;
 	struct rq *rq;
@@ -5391,7 +5388,8 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 		goto out;
 	}
 
-	if (cpumask_equal(tsk_cpus_allowed(p), new_mask))
+	cpumask_copy(&old_mask, tsk_cpus_allowed(p));
+	if (cpumask_equal(&old_mask, new_mask))
 		goto out;
 
 	if (!cpumask_intersects(new_mask, cpu_valid_mask)) {
@@ -5428,7 +5426,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 		set_task_cpu(p, cpumask_any_and(cpu_valid_mask, new_mask));
 
 out:
-	if (queued)
+	if (queued && !cpumask_subset(new_mask, &old_mask))
 		try_preempt(p, rq);
 	task_grq_unlock(&flags);
 
@@ -7315,7 +7313,6 @@ static inline void normalise_rt_tasks(void)
 	struct task_struct *g, *p;
 	unsigned long flags;
 	struct rq *rq;
-	int queued;
 
 	read_lock(&tasklist_lock);
 	for_each_process_thread(g, p) {
@@ -7329,15 +7326,7 @@ static inline void normalise_rt_tasks(void)
 			continue;
 
 		rq = task_grq_lock(p, &flags);
-		queued = task_queued(p);
-		if (queued)
-			dequeue_task(p);
 		__setscheduler(p, rq, SCHED_NORMAL, 0, false);
-		if (queued) {
-			enqueue_task(p, rq);
-			try_preempt(p, rq);
-		}
-
 		task_grq_unlock(&flags);
 	}
 	read_unlock(&tasklist_lock);
