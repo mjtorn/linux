@@ -532,6 +532,40 @@ static inline bool deadline_after(u64 deadline, u64 time)
 }
 
 /*
+ * Deadline is "now" in niffies + (offset by priority). Setting the deadline
+ * is the key to everything. It distributes cpu fairly amongst tasks of the
+ * same nice value, it proportions cpu according to nice level, it means the
+ * task that last woke up the longest ago has the earliest deadline, thus
+ * ensuring that interactive tasks get low latency on wake up. The CPU
+ * proportion works out to the square of the virtual deadline difference, so
+ * this equation will give nice 19 3% CPU compared to nice 0.
+ */
+static inline u64 prio_deadline_diff(int user_prio)
+{
+	return (prio_ratios[user_prio] * rr_interval * (MS_TO_NS(1) / 128));
+}
+
+static inline u64 task_deadline_diff(struct task_struct *p)
+{
+	return prio_deadline_diff(TASK_USER_PRIO(p));
+}
+
+static inline u64 static_deadline_diff(int static_prio)
+{
+	return prio_deadline_diff(USER_PRIO(static_prio));
+}
+
+static inline int longest_deadline_diff(void)
+{
+	return prio_deadline_diff(39);
+}
+
+static inline int ms_longest_deadline_diff(void)
+{
+	return NS_TO_MS(longest_deadline_diff());
+}
+
+/*
  * A task that is not running or queued will not have a node set.
  * A task that is queued but not running will have a node set.
  * A task that is currently running will have ->on_cpu set but no node set.
@@ -553,14 +587,23 @@ static void dequeue_task(struct task_struct *p)
 	sched_info_dequeued(task_rq(p), p);
 }
 
+#ifdef CONFIG_PREEMPT_RCU
+static bool rcu_read_critical(struct task_struct *p)
+{
+	return p->rcu_read_unlock_special.b.blocked;
+}
+#else /* CONFIG_PREEMPT_RCU */
+#define rcu_read_critical(p) (false)
+#endif /* CONFIG_PREEMPT_RCU */
+
 /*
  * To determine if it's safe for a task of SCHED_IDLEPRIO to actually run as
  * an idle task, we ensure none of the following conditions are met.
  */
 static bool idleprio_suitable(struct task_struct *p)
 {
-	return (!freezing(p) && !signal_pending(p) &&
-		!(task_contributes_to_load(p)) && !(p->flags & (PF_EXITING)));
+	return (!(task_contributes_to_load(p)) && !(p->flags & (PF_EXITING)) &&
+		!signal_pending(p) && !rcu_read_critical(p) && !freezing(p));
 }
 
 /*
@@ -604,9 +647,13 @@ static void enqueue_task(struct task_struct *p, struct rq *rq)
 		sl_id = p->prio;
 	else {
 		sl_id = p->deadline;
-		/* Set it to cope with 4 left shifts with locality_diff */
-		if (p->prio == IDLE_PRIO)
-			sl_id |= 0x0F00000000000000;
+		if (idleprio_task(p)) {
+			/* Set it to cope with 4 left shifts with locality_diff */
+			if (p->prio == IDLE_PRIO)
+				sl_id |= 0x00FF000000000000;
+			else
+				sl_id += longest_deadline_diff();
+		}
 	}
 	/*
 	 * Some architectures don't have better than microsecond resolution
@@ -3073,40 +3120,6 @@ NOKPROBE_SYMBOL(preempt_count_sub);
 static inline void preempt_latency_start(int val) { }
 static inline void preempt_latency_stop(int val) { }
 #endif
-
-/*
- * Deadline is "now" in niffies + (offset by priority). Setting the deadline
- * is the key to everything. It distributes cpu fairly amongst tasks of the
- * same nice value, it proportions cpu according to nice level, it means the
- * task that last woke up the longest ago has the earliest deadline, thus
- * ensuring that interactive tasks get low latency on wake up. The CPU
- * proportion works out to the square of the virtual deadline difference, so
- * this equation will give nice 19 3% CPU compared to nice 0.
- */
-static inline u64 prio_deadline_diff(int user_prio)
-{
-	return (prio_ratios[user_prio] * rr_interval * (MS_TO_NS(1) / 128));
-}
-
-static inline u64 task_deadline_diff(struct task_struct *p)
-{
-	return prio_deadline_diff(TASK_USER_PRIO(p));
-}
-
-static inline u64 static_deadline_diff(int static_prio)
-{
-	return prio_deadline_diff(USER_PRIO(static_prio));
-}
-
-static inline int longest_deadline_diff(void)
-{
-	return prio_deadline_diff(39);
-}
-
-static inline int ms_longest_deadline_diff(void)
-{
-	return NS_TO_MS(longest_deadline_diff());
-}
 
 /*
  * The time_slice is only refilled when it is empty and that is when we set a
