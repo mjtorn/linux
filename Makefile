@@ -15,6 +15,10 @@ NAME = Merciless Moray
 PHONY := _all
 _all:
 
+CKVERSION = -ck1
+CKNAME = MuQSS Powered
+EXTRAVERSION := $(EXTRAVERSION)$(CKVERSION)
+
 # o Do not use make's built-in rules and variables
 #   (this increases performance and avoids hard-to-debug behaviour);
 # o Look for make include files relative to root of kernel src
