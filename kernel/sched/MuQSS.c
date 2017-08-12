@@ -350,18 +350,6 @@ static inline void rq_unlock(struct rq *rq)
 	raw_spin_unlock(&rq->lock);
 }
 
-static inline struct rq *this_rq_lock(void)
-	__acquires(rq->lock)
-{
-	struct rq *rq;
-
-	local_irq_disable();
-	rq = this_rq();
-	raw_spin_lock(&rq->lock);
-
-	return rq;
-}
-
 /*
  * Any time we have two runqueues locked we use that as an opportunity to
  * synchronise niffies to the highest value as idle ticks may have artificially
@@ -886,6 +874,7 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	skiplist_delete(rq->sl, &p->node);
 	rq->best_key = rq->node.next[0]->key;
 	update_clocks(rq);
+
 	if (!(flags & DEQUEUE_SAVE))
 		sched_info_dequeued(task_rq(p), p);
 	update_load_avg(rq, flags);
@@ -1823,7 +1812,7 @@ void sched_ttwu_pending(void)
 	if (!llist)
 		return;
 
-	raw_spin_lock_irqsave(&rq->lock, flags);
+	rq_lock_irqsave(rq, &flags);
 
 	while (llist) {
 		int wake_flags = 0;
@@ -1834,7 +1823,7 @@ void sched_ttwu_pending(void)
 		ttwu_do_activate(rq, p, wake_flags);
 	}
 
-	raw_spin_unlock_irqrestore(&rq->lock, flags);
+	rq_unlock_irqrestore(rq, &flags);
 }
 
 void scheduler_ipi(void)
@@ -2142,9 +2131,9 @@ static void try_to_wake_up_local(struct task_struct *p)
 		 * disabled avoiding further scheduler activity on it and we've
 		 * not yet picked a replacement task.
 		 */
-		raw_spin_unlock(&rq->lock);
+		rq_unlock(rq);
 		raw_spin_lock(&p->pi_lock);
-		raw_spin_lock(&rq->lock);
+		rq_lock(rq);
 	}
 
 	if (!(p->state & TASK_NORMAL))
@@ -3782,7 +3771,7 @@ static void __sched notrace __schedule(bool preempt)
 	schedule_debug(prev);
 
 	local_irq_disable();
-	rcu_note_context_switch();
+	rcu_note_context_switch(preempt);
 
 	/*
 	 * Make sure that signal_pending_state()->signal_pending() below
@@ -3948,6 +3937,31 @@ asmlinkage __visible void __sched schedule(void)
 }
 
 EXPORT_SYMBOL(schedule);
+
+/*
+ * synchronize_rcu_tasks() makes sure that no task is stuck in preempted
+ * state (have scheduled out non-voluntarily) by making sure that all
+ * tasks have either left the run queue or have gone into user space.
+ * As idle tasks do not do either, they must not ever be preempted
+ * (schedule out non-voluntarily).
+ *
+ * schedule_idle() is similar to schedule_preempt_disable() except that it
+ * never enables preemption because it does not call sched_submit_work().
+ */
+void __sched schedule_idle(void)
+{
+	/*
+	 * As this skips calling sched_submit_work(), which the idle task does
+	 * regardless because that function is a nop when the task is in a
+	 * TASK_RUNNING state, make sure this isn't used someplace that the
+	 * current task can be in any other state. Note, idle is always in the
+	 * TASK_RUNNING state.
+	 */
+	WARN_ON_ONCE(current->state);
+	do {
+		__schedule(false);
+	} while (need_resched());
+}
 
 #ifdef CONFIG_CONTEXT_TRACKING
 asmlinkage __visible void __sched schedule_user(void)
@@ -4118,10 +4132,25 @@ EXPORT_SYMBOL(default_wake_function);
 
 #ifdef CONFIG_RT_MUTEXES
 
+static inline int __rt_effective_prio(struct task_struct *pi_task, int prio)
+{
+	if (pi_task)
+		prio = min(prio, pi_task->prio);
+
+	return prio;
+}
+
+static inline int rt_effective_prio(struct task_struct *p, int prio)
+{
+	struct task_struct *pi_task = rt_mutex_get_top_task(p);
+
+	return __rt_effective_prio(pi_task, prio);
+}
+
 /*
  * rt_mutex_setprio - set the current priority of a task
- * @p: task
- * @prio: prio value (kernel-internal form)
+ * @p: task to boost
+ * @pi_task: donor task
  *
  * This function changes the 'effective' priority of a task. It does
  * not touch ->normal_prio like __setscheduler().
@@ -4129,15 +4158,39 @@ EXPORT_SYMBOL(default_wake_function);
  * Used by the rt_mutex code to implement priority inheritance
  * logic. Call site only calls if the priority of the task changed.
  */
-void rt_mutex_setprio(struct task_struct *p, int prio)
+void rt_mutex_setprio(struct task_struct *p, struct task_struct *pi_task)
 {
 	struct rq *rq;
 	int oldprio;
 
-	BUG_ON(prio < 0 || prio > MAX_PRIO);
+	/* XXX used to be waiter->prio, not waiter->task->prio */
+	prio = __rt_effective_prio(pi_task, p->normal_prio);
+
+	/*
+	 * If nothing changed; bail early.
+	 */
+	if (p->pi_top_task == pi_task && prio == p->prio && !dl_prio(prio))
+		return;
 
 	rq = __task_rq_lock(p);
 	update_rq_clock(rq);
+	/*
+	 * Set under pi_lock && rq->lock, such that the value can be used under
+	 * either lock.
+	 *
+	 * Note that there is loads of tricky to make this pointer cache work
+	 * right. rt_mutex_slowunlock()+rt_mutex_postunlock() work together to
+	 * ensure a task is de-boosted (pi_task is set to NULL) before the
+	 * task is allowed to run again (and can exit). This ensures the pointer
+	 * points to a blocked task -- which guaratees the task is present.
+	 */
+	p->pi_top_task = pi_task;
+
+	/*
+	 * For FIFO/RR we only need to set prio, if that matches we're done.
+	 */
+	if (prio == p->prio && !dl_prio(prio))
+		goto out_unlock;
 
 	/*
 	 * Idle task boosting is a nono in general. There is one
@@ -4157,7 +4210,7 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 		goto out_unlock;
 	}
 
-	trace_sched_pi_setprio(p, prio);
+	trace_sched_pi_setprio(p, pi_task);
 	oldprio = p->prio;
 	p->prio = prio;
 	if (task_running(rq, p)){
@@ -4172,7 +4225,11 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 out_unlock:
 	__task_rq_unlock(rq);
 }
-
+#else
+static inline int rt_effective_prio(struct task_struct *p, int prio)
+{
+	return prio;
+}
 #endif
 
 /*
@@ -4358,17 +4415,9 @@ static void __setscheduler(struct task_struct *p, struct rq *rq, int policy,
 	 * Keep a potential priority boosting if called from
 	 * sched_setscheduler().
 	 */
-	if (keep_boost) {
-		/*
-		 * Take priority boosted tasks into account. If the new
-		 * effective priority is unchanged, we just store the new
-		 * normal parameters and do not touch the scheduler class and
-		 * the runqueue. This will be done when the task deboost
-		 * itself.
-		 */
-		p->prio = rt_mutex_get_effective_prio(p, p->normal_prio);
-	} else
-		p->prio = p->normal_prio;
+	p->prio = normal_prio(p);
+	if (keep_boost)
+		p->prio = rt_effective_prio(p, p->prio);
 
 	if (task_running(rq, p)) {
 		set_rq_task(rq, p);
@@ -5099,24 +5148,25 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
  */
 SYSCALL_DEFINE0(sched_yield)
 {
-	struct task_struct *p;
 	struct rq *rq;
 
 	if (!sched_yield_type)
 		goto out;
-	p = current;
-	rq = this_rq_lock();
+
+	local_irq_disable();
+	rq = this_rq();
+	rq_lock(rq);
+
 	if (sched_yield_type > 1)
-		time_slice_expired(p, rq);
+		time_slice_expired(current, rq);
 	schedstat_inc(rq->yld_count);
 
 	/*
 	 * Since we are going to call schedule() anyway, there's
 	 * no need to preempt or enable interrupts:
 	 */
-	__release(rq->lock);
-	spin_release(&rq->lock.dep_map, 1, _THIS_IP_);
-	do_raw_spin_unlock(&rq->lock);
+	preempt_disable();
+	rq_unlock(rq);
 	sched_preempt_enable_no_resched();
 
 	schedule();
@@ -5811,7 +5861,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 		/* Task is running on the wrong cpu now, reschedule it. */
 		if (rq == this_rq()) {
 			set_tsk_need_resched(p);
-			running_wrong = kthread;
+			running_wrong = true;
 		} else
 			resched_task(p);
 	} else {
@@ -5928,7 +5978,7 @@ void idle_task_exit(void)
 	BUG_ON(cpu_online(smp_processor_id()));
 
 	if (mm != &init_mm) {
-		switch_mm_irqs_off(mm, &init_mm, current);
+		switch_mm(mm, &init_mm, current);
 		finish_arch_post_lock_switch();
 	}
 	mmdrop(mm);
@@ -6190,13 +6240,13 @@ static void cpuset_cpu_active(void)
 		 */
 	}
 
-	cpuset_update_active_cpus(true);
+	cpuset_update_active_cpus();
 }
 
 static int cpuset_cpu_inactive(unsigned int cpu)
 {
 	if (!cpuhp_tasks_frozen) {
-		cpuset_update_active_cpus(false);
+		cpuset_update_active_cpus();
 	} else {
 		num_cpus_frozen++;
 		partition_sched_domains(1, NULL, NULL);

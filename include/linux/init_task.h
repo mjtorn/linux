@@ -296,6 +296,8 @@ extern struct cred init_cred;
 	INIT_VTIME(tsk)							\
 	INIT_NUMA_BALANCING(tsk)					\
 	INIT_KASAN(tsk)							\
+	INIT_LIVEPATCH(tsk)						\
+	INIT_TASK_SECURITY						\
 }
 #else /* CONFIG_SCHED_MUQSS */
 #define INIT_TASK_COMM "swapper"

@@ -267,7 +267,7 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 #endif /* CONFIG_SMP */
 
 /*
- * {de,en}queue flags:
+ * {de,en}queue flags: Most not used on MuQSS.
  *
  * DEQUEUE_SLEEP  - task is no longer runnable
  * ENQUEUE_WAKEUP - task just became runnable
@@ -285,21 +285,9 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
  *
  */
 
-#define DEQUEUE_SLEEP		0x01
 #define DEQUEUE_SAVE		0x02 /* matches ENQUEUE_RESTORE */
-#define DEQUEUE_MOVE		0x04 /* matches ENQUEUE_MOVE */
 
-#define ENQUEUE_WAKEUP		0x01
 #define ENQUEUE_RESTORE		0x02
-#define ENQUEUE_MOVE		0x04
-
-#define ENQUEUE_HEAD		0x08
-#define ENQUEUE_REPLENISH	0x10
-#ifdef CONFIG_SMP
-#define ENQUEUE_MIGRATED	0x20
-#else
-#define ENQUEUE_MIGRATED	0x00
-#endif
 
 static inline u64 __rq_clock_broken(struct rq *rq)
 {
@@ -515,6 +503,8 @@ static inline struct cpuidle_state *idle_get_state(struct rq *rq)
 	return NULL;
 }
 #endif
+
+extern void schedule_idle(void);
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 struct irqtime {
