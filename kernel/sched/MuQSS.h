@@ -23,6 +23,7 @@
 
 #include <linux/u64_stats_sync.h>
 #include <linux/kernel_stat.h>
+#include <linux/tick.h>
 #include <linux/slab.h>
 
 #ifdef CONFIG_PARAVIRT
@@ -265,6 +266,106 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 #define this_rq()		this_cpu_ptr(&runqueues)
 #define raw_rq()		raw_cpu_ptr(&runqueues)
 #endif /* CONFIG_SMP */
+
+#define task_rq(p)		cpu_rq(task_cpu(p))
+
+static inline int task_current(struct rq *rq, struct task_struct *p)
+{
+	return rq->curr == p;
+}
+
+static inline int task_running(struct rq *rq, struct task_struct *p)
+{
+#ifdef CONFIG_SMP
+	return p->on_cpu;
+#else
+	return task_current(rq, p);
+#endif
+}
+
+static inline void rq_lock(struct rq *rq)
+	__acquires(rq->lock)
+{
+	raw_spin_lock(&rq->lock);
+}
+
+static inline void rq_unlock(struct rq *rq)
+	__releases(rq->lock)
+{
+	raw_spin_unlock(&rq->lock);
+}
+
+static inline void rq_lock_irq(struct rq *rq)
+	__acquires(rq->lock)
+{
+	raw_spin_lock_irq(&rq->lock);
+}
+
+static inline void rq_unlock_irq(struct rq *rq)
+	__releases(rq->lock)
+{
+	raw_spin_unlock_irq(&rq->lock);
+}
+
+static inline void rq_lock_irqsave(struct rq *rq, unsigned long *flags)
+	__acquires(rq->lock)
+{
+	raw_spin_lock_irqsave(&rq->lock, *flags);
+}
+
+static inline void rq_unlock_irqrestore(struct rq *rq, unsigned long *flags)
+	__releases(rq->lock)
+{
+	raw_spin_unlock_irqrestore(&rq->lock, *flags);
+}
+
+static inline struct rq *task_rq_lock(struct task_struct *p, unsigned long *flags)
+	__acquires(p->pi_lock)
+	__acquires(rq->lock)
+{
+	struct rq *rq;
+
+	while (42) {
+		raw_spin_lock_irqsave(&p->pi_lock, *flags);
+		rq = task_rq(p);
+		raw_spin_lock(&rq->lock);
+		if (likely(rq == task_rq(p)))
+			break;
+		raw_spin_unlock(&rq->lock);
+		raw_spin_unlock_irqrestore(&p->pi_lock, *flags);
+	}
+	return rq;
+}
+
+static inline void task_rq_unlock(struct rq *rq, struct task_struct *p, unsigned long *flags)
+	__releases(rq->lock)
+	__releases(p->pi_lock)
+{
+	rq_unlock(rq);
+	raw_spin_unlock_irqrestore(&p->pi_lock, *flags);
+}
+
+static inline struct rq *__task_rq_lock(struct task_struct *p)
+	__acquires(rq->lock)
+{
+	struct rq *rq;
+
+	lockdep_assert_held(&p->pi_lock);
+
+	while (42) {
+		rq = task_rq(p);
+		raw_spin_lock(&rq->lock);
+		if (likely(rq == task_rq(p)))
+			break;
+		raw_spin_unlock(&rq->lock);
+	}
+	return rq;
+}
+
+static inline void __task_rq_unlock(struct rq *rq)
+{
+	rq_unlock(rq);
+}
 
 /*
  * {de,en}queue flags: Most not used on MuQSS.
