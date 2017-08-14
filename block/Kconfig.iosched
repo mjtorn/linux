@@ -49,15 +49,21 @@ choice
 
 	config DEFAULT_DEADLINE
 		bool "Deadline" if IOSCHED_DEADLINE=y
+		select SCSI if MQ_IOSCHED_DEADLINE=y
+		select SCSI_MQ_DEFAULT if MQ_IOSCHED_DEADLINE=y
 
 	config DEFAULT_BFQ
 		bool "BFQ" if IOSCHED_BFQ=y
+		select SCSI
+		select SCSI_MQ_DEFAULT
 
 	config DEFAULT_CFQ_NOINHERIT
 		bool "CFQ" if IOSCHED_CFQ=y
 
 	config DEFAULT_KYBER
 		bool "KYBER" if MQ_IOSCHED_KYBER=y
+		select SCSI
+		select SCSI_MQ_DEFAULT
 
 	config DEFAULT_NOOP
 		bool "No-op"
