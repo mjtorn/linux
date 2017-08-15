@@ -109,7 +109,7 @@
 
 void print_scheduler_version(void)
 {
-	printk(KERN_INFO "MuQSS CPU scheduler v0.157 by Con Kolivas.\n");
+	printk(KERN_INFO "MuQSS CPU scheduler v0.160 by Con Kolivas.\n");
 }
 
 /*
@@ -5789,24 +5789,35 @@ EXPORT_SYMBOL_GPL(set_cpus_allowed_ptr);
 static void bind_zero(int src_cpu)
 {
 	struct task_struct *p, *t;
+	struct rq *rq0;
 	int bound = 0;
 
 	if (src_cpu == 0)
 		return;
 
+	rq0 = cpu_rq(0);
+
 	do_each_thread(t, p) {
 		if (cpumask_test_cpu(src_cpu, &p->cpus_allowed)) {
 			bool local = (task_cpu(p) == src_cpu);
+			struct rq *rq = task_rq(p);
 
 			/* task_running is the cpu stopper thread */
-			if (local && task_running(task_rq(p), p))
+			if (local && task_running(rq, p))
 				continue;
 			atomic_clear_cpu(src_cpu, &p->cpus_allowed);
 			atomic_set_cpu(0, &p->cpus_allowed);
 			p->zerobound = true;
 			bound++;
-			if (local)
+			if (local) {
+				bool queued = task_queued(p);
+
+				if (queued)
+					dequeue_task(rq, p, 0);
 				set_task_cpu(p, 0);
+				if (queued)
+					enqueue_task(rq0, p, 0);
+			}
 		}
 	} while_each_thread(t, p);
 
