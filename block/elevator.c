@@ -208,38 +208,39 @@ int elevator_init(struct request_queue *q, char *name)
 	}
 
 	/*
-	 * Use the default elevator specified by config boot param for
-	 * non-mq devices, or by config option. Don't try to load modules
+	 * Use the default elevator specified by config boot param
+	 * or by config option. Don't try to load modules
 	 * as we could be running off async and request_module() isn't
 	 * allowed from async.
 	 */
-	if (!e && !q->mq_ops && *chosen_elevator) {
+	if (!e && *chosen_elevator) {
 		e = elevator_get(chosen_elevator, false);
 		if (!e)
 			printk(KERN_ERR "I/O scheduler %s not found\n",
 							chosen_elevator);
+		else {
+			if ((e->uses_mq && !q->mq_ops) || (!e->uses_mq && q->mq_ops)) {
+				printk(KERN_ERR "I/O scheduler %s mismatch with queue mq use\n",
+								chosen_elevator);
+				elevator_put(e);
+				e = NULL;
+			}
+		}
 	}
 
 	if (!e) {
-		/*
-		 * For blk-mq devices, we default to using mq-deadline,
-		 * if available, for single queue devices. If deadline
-		 * isn't available OR we have multiple queues, default
-		 * to "none".
-		 */
-		if (q->mq_ops) {
-			if (q->nr_hw_queues == 1)
+		e = elevator_get(CONFIG_DEFAULT_IOSCHED, false);
+		if ((e->uses_mq && !q->mq_ops) || (!e->uses_mq && q->mq_ops)) {
+			printk(KERN_ERR "I/O scheduler %s mismatch with queue mq use\n",
+							e->elevator_name);
+			elevator_put(e);
+			e = NULL;
+			if (q->mq_ops) {
 				e = elevator_get("mq-deadline", false);
-			if (!e)
-				return 0;
-		} else
-			e = elevator_get(CONFIG_DEFAULT_IOSCHED, false);
-
-		if (!e) {
-			printk(KERN_ERR
-				"Default I/O scheduler not found. " \
-				"Using noop.\n");
-			e = elevator_get("noop", false);
+				if (!e)
+					return 0;
+			} else
+				e = elevator_get("noop", false);
 		}
 	}
 
