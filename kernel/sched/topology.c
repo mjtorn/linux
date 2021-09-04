@@ -468,9 +468,9 @@ void rq_attach_root(struct rq *rq, struct root_domain *rd)
 	unsigned long flags;
 
 #ifdef CONFIG_SCHED_MUQSS
-	raw_spin_unlock_irqrestore(rq->lock, flags);
+	raw_spin_lock_irqsave(rq->lock, flags);
 #else
-	raw_spin_rq_unlock_irqrestore(rq, flags);
+	raw_spin_rq_lock_irqsave(rq, flags);
 #endif
 
 	if (rq->rd) {
