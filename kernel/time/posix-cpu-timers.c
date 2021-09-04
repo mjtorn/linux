@@ -803,10 +803,12 @@ static void collect_posix_cputimers(struct posix_cputimers *pct, u64 *samples,
 
 static inline void check_dl_overrun(struct task_struct *tsk)
 {
+#ifndef CONFIG_SCHED_MUQSS
 	if (tsk->dl.dl_overrun) {
 		tsk->dl.dl_overrun = 0;
 		__group_send_sig_info(SIGXCPU, SEND_SIG_PRIV, tsk);
 	}
+#endif
 }
 
 static bool check_rlimit(u64 time, u64 limit, int signo, bool rt, bool hard)
@@ -1086,8 +1088,10 @@ static inline bool fastpath_timer_check(struct task_struct *tsk)
 			return true;
 	}
 
+#ifndef CONFIG_SCHED_MUQSS
 	if (dl_task(tsk) && tsk->dl.dl_overrun)
 		return true;
+#endif
 
 	return false;
 }
