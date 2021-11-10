@@ -754,7 +754,7 @@ static inline struct cpuidle_state *idle_get_state(struct rq *rq)
 #endif
 
 #ifdef CONFIG_SCHED_DEBUG
-extern bool sched_debug_enabled;
+extern bool sched_debug_verbose;
 #endif
 
 extern void schedule_idle(void);

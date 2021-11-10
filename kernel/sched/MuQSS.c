@@ -8108,7 +8108,7 @@ void init_idle_bootup_task(struct task_struct *idle)
 {}
 
 #ifdef CONFIG_SCHED_DEBUG
-__read_mostly bool sched_debug_enabled;
+__read_mostly bool sched_debug_verbose;
 
 void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 			  struct seq_file *m)
