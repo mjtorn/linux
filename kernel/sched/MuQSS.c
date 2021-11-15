@@ -7629,7 +7629,7 @@ static void __init setup_rq_orders(void)
 {
 	int *selected_cpus, *ordered_cpus;
 	struct rq *rq, *other_rq;
-	int cpu, other_cpu, i;
+	int cpu, other_cpu;
 
 	selected_cpus = kmalloc(sizeof(int) * NR_CPUS, GFP_ATOMIC);
 	ordered_cpus = kmalloc(sizeof(int) * NR_CPUS, GFP_ATOMIC);
@@ -7716,6 +7716,7 @@ static void __init setup_rq_orders(void)
 
 #ifdef CONFIG_X86
 	for_each_online_cpu(cpu) {
+		int i;
 		rq = cpu_rq(cpu);
 		for (i = 0; i < total_runqueues; i++) {
 			printk(KERN_DEBUG "MuQSS CPU %d llc %d RQ order %d RQ %d llc %d\n", cpu, per_cpu(cpu_llc_id, cpu), i,
@@ -7724,6 +7725,7 @@ static void __init setup_rq_orders(void)
 	}
 
 	for_each_online_cpu(cpu) {
+		int i;
 		rq = cpu_rq(cpu);
 		for (i = 0; i < num_online_cpus(); i++) {
 			printk(KERN_DEBUG "MuQSS CPU %d llc %d CPU order %d RQ %d llc %d\n", cpu, per_cpu(cpu_llc_id, cpu), i,
