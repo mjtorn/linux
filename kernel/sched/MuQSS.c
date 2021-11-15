@@ -2273,8 +2273,6 @@ static void time_slice_expired(struct task_struct *p, struct rq *rq);
  */
 int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 {
-	unsigned long flags;
-
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	INIT_HLIST_HEAD(&p->preempt_notifiers);
 #endif
@@ -2331,14 +2329,6 @@ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 		p->sched_reset_on_fork = 0;
 	}
 
-	/*
-	 * Silence PROVE_RCU.
-	 */
-	raw_spin_lock_irqsave(&p->pi_lock, flags);
-	rseq_migrate(p);
-	set_task_cpu(p, smp_processor_id());
-	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
-
 #ifdef CONFIG_SCHED_INFO
 	if (unlikely(sched_info_on()))
 		memset(&p->sched_info, 0, sizeof(p->sched_info));
@@ -2348,8 +2338,14 @@ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 	return 0;
 }
 
-void sched_post_fork(struct task_struct *p)
+void sched_post_fork(struct task_struct *p, struct kernel_clone_args *kargs)
 {
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&p->pi_lock, flags);
+	rseq_migrate(p);
+	set_task_cpu(p, smp_processor_id());
+	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 }
 
 #ifdef CONFIG_SCHEDSTATS
