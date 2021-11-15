@@ -1361,11 +1361,7 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 		return;
 	}
 
-#ifdef CONFIG_THREAD_INFO_IN_TASK
-	WRITE_ONCE(p->cpu, new_cpu);
-#else
 	WRITE_ONCE(task_thread_info(p)->cpu, new_cpu);
-#endif
 	/* We're no longer protecting p after this point since we're holding
 	 * the wrong runqueue lock. */
 }
@@ -2747,11 +2743,7 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 		 * activate prev to the wrong cpu since it has to grab this
 		 * runqueue in ttwu_remote.
 		 */
-#ifdef CONFIG_THREAD_INFO_IN_TASK
-		prev->cpu = prev->wake_cpu;
-#else
 		task_thread_info(prev)->cpu = prev->wake_cpu;
-#endif
 		raw_spin_unlock(rq->lock);
 
 		raw_spin_lock(&prev->pi_lock);
