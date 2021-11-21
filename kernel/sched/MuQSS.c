@@ -447,7 +447,8 @@ static inline void unlock_all_rqs(void)
 	for_each_possible_cpu(cpu) {
 		struct rq *rq = cpu_rq(cpu);
 
-		do_raw_spin_unlock(rq->lock);
+		if (rq->is_leader)
+			do_raw_spin_unlock(rq->lock);
 	}
 	preempt_enable();
 }
@@ -7663,8 +7664,6 @@ static void __init share_and_free_rq(struct rq *leader, struct rq *rq)
 	rq->lock = leader->lock;
 	rq->is_leader = false;
 	barrier();
-	/* To make up for not unlocking the freed runlock */
-	preempt_enable();
 }
 
 static void __init share_rqs(void)
@@ -7676,11 +7675,8 @@ static void __init share_rqs(void)
 		rq = cpu_rq(cpu);
 		leader = rq->smp_leader;
 
-		rq_lock(rq);
-		if (leader && rq != leader) {
+		if (leader && rq != leader)
 			share_and_free_rq(leader, rq);
-		} else
-			rq_unlock(rq);
 	}
 
 #ifdef CONFIG_SCHED_MC
@@ -7688,11 +7684,8 @@ static void __init share_rqs(void)
 		rq = cpu_rq(cpu);
 		leader = rq->mc_leader;
 
-		rq_lock(rq);
-		if (leader && rq != leader) {
+		if (leader && rq != leader)
 			share_and_free_rq(leader, rq);
-		} else
-			rq_unlock(rq);
 	}
 #endif /* CONFIG_SCHED_MC */
 
@@ -7701,11 +7694,8 @@ static void __init share_rqs(void)
 		rq = cpu_rq(cpu);
 		leader = rq->smt_leader;
 
-		rq_lock(rq);
-		if (leader && rq != leader) {
+		if (leader && rq != leader)
 			share_and_free_rq(leader, rq);
-		} else
-			rq_unlock(rq);
 	}
 #endif /* CONFIG_SCHED_SMT */
 }
@@ -7845,11 +7835,9 @@ void __init sched_init_smp(void)
 	lock_all_rqs();
 
 	select_leaders();
-
-	unlock_all_rqs();
-
 	share_rqs();
 
+	unlock_all_rqs();
 	local_irq_enable();
 	mutex_unlock(&sched_domains_mutex);
 
