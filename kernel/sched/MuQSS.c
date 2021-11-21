@@ -7652,23 +7652,12 @@ static void __init select_leaders(void)
 		smt_schedule = &smt_should_schedule;
 	}
 #endif
-
-	for_each_online_cpu(cpu) {
-		rq = cpu_rq(cpu);
-		for_each_online_cpu(other_cpu) {
-			printk(KERN_DEBUG "MuQSS locality CPU %d to %d: %d\n", cpu, other_cpu, rq->cpu_locality[other_cpu]);
-		}
-	}
 }
 
-/* FIXME freeing locked spinlock */
 static void __init share_and_free_rq(struct rq *leader, struct rq *rq)
 {
 	WARN_ON(rq->nr_running > 0);
 
-	kfree(rq->node);
-	kfree(rq->sl);
-	kfree(rq->lock);
 	rq->node = leader->node;
 	rq->sl = leader->sl;
 	rq->lock = leader->lock;
@@ -7689,8 +7678,6 @@ static void __init share_rqs(void)
 
 		rq_lock(rq);
 		if (leader && rq != leader) {
-			printk(KERN_INFO "MuQSS sharing SMP runqueue from CPU %d to CPU %d\n",
-			       leader->cpu, rq->cpu);
 			share_and_free_rq(leader, rq);
 		} else
 			rq_unlock(rq);
@@ -7703,8 +7690,6 @@ static void __init share_rqs(void)
 
 		rq_lock(rq);
 		if (leader && rq != leader) {
-			printk(KERN_INFO "MuQSS sharing MC runqueue from CPU %d to CPU %d\n",
-			       leader->cpu, rq->cpu);
 			share_and_free_rq(leader, rq);
 		} else
 			rq_unlock(rq);
@@ -7718,8 +7703,6 @@ static void __init share_rqs(void)
 
 		rq_lock(rq);
 		if (leader && rq != leader) {
-			printk(KERN_INFO "MuQSS sharing SMT runqueue from CPU %d to CPU %d\n",
-			       leader->cpu, rq->cpu);
 			share_and_free_rq(leader, rq);
 		} else
 			rq_unlock(rq);
@@ -7854,21 +7837,21 @@ void __init sched_init_smp(void)
 	if (set_cpus_allowed_ptr(current, housekeeping_cpumask(HK_TYPE_DOMAIN)) < 0)
 		BUG();
 
-	local_irq_disable();
-	mutex_lock(&sched_domains_mutex);
-	lock_all_rqs();
-
 	printk(KERN_INFO "MuQSS possible/present/online CPUs: %d/%d/%d\n",
 		num_possible_cpus(), num_present_cpus(), num_online_cpus());
+
+	mutex_lock(&sched_domains_mutex);
+	local_irq_disable();
+	lock_all_rqs();
 
 	select_leaders();
 
 	unlock_all_rqs();
-	mutex_unlock(&sched_domains_mutex);
 
 	share_rqs();
 
 	local_irq_enable();
+	mutex_unlock(&sched_domains_mutex);
 
 	setup_rq_orders();
 
