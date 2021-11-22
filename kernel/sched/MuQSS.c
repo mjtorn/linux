@@ -7789,7 +7789,7 @@ static void __init setup_rq_orders(void)
 	kfree(selected_cpus);
 	kfree(ordered_cpus);
 
-#ifdef CONFIG_X86
+#if defined(CONFIG_X86) && defined(CONFIG_SCHED_DEBUG)
 	for_each_online_cpu(cpu) {
 		int i;
 		rq = cpu_rq(cpu);
