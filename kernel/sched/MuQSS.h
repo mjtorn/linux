@@ -1081,4 +1081,6 @@ extern int sysctl_sched_rt_runtime;
 
 static inline void nohz_run_idle_balance(int cpu) { }
 
+static inline void update_sched_domain_debugfs(void) { }
+
 #endif /* MUQSS_SCHED_H */
