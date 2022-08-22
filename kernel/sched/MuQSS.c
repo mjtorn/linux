@@ -255,8 +255,6 @@ EXPORT_SYMBOL_GPL(sched_smt_present);
 struct rq *uprq;
 #endif /* CONFIG_SMP */
 
-#include "stats.h"
-
 /*
  * All common locking functions performed on rq->lock. rq->clock is local to
  * the CPU accessing it so it can be modified just with interrupts disabled

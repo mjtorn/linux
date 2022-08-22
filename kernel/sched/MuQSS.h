@@ -35,6 +35,7 @@
 #include <linux/membarrier.h>
 #include <linux/livepatch.h>
 #include <linux/proc_fs.h>
+#include <linux/profile.h>
 #include <linux/psi.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -725,6 +726,8 @@ static inline void trigger_load_balance(struct rq *rq)
 static inline void flush_smp_call_function_from_idle(void) { }
 
 #endif /* CONFIG_SMP */
+
+#include "stats.h"
 
 #ifdef CONFIG_CPU_IDLE
 static inline void idle_set_state(struct rq *rq,
