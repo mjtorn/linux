@@ -1079,4 +1079,6 @@ static inline u64 thermal_load_avg(struct rq *rq)
 extern int sysctl_sched_rt_runtime;
 #endif
 
+static inline void nohz_run_idle_balance(int cpu) { }
+
 #endif /* MUQSS_SCHED_H */
