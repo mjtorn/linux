@@ -950,8 +950,9 @@ static inline unsigned long cpu_util_dl(struct rq *rq)
 	return 0;
 }
 
-static inline unsigned long cpu_util_cfs(struct rq *rq)
+static inline unsigned long cpu_util_cfs(int cpu)
 {
+	struct rq *rq = cpu_rq(cpu);
 	unsigned long ret = READ_ONCE(rq->load_avg);
 
 	if (ret > SCHED_CAPACITY_SCALE)
