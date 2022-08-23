@@ -5,15 +5,7 @@
 #ifdef CONFIG_SCHED_MUQSS
 #include "MuQSS.h"
 
-/* Begin compatibility wrappers for MuQSS/CFS differences */
-#define rq_rt_nr_running(rq) ((rq)->rt_nr_running)
-#define rq_h_nr_running(rq) ((rq)->nr_running)
-
 #else /* CONFIG_SCHED_MUQSS */
-
-#define rq_rt_nr_running(rq) ((rq)->rt.rt_nr_running)
-#define rq_h_nr_running(rq) ((rq)->cfs.h_nr_running)
-
 
 #include <linux/sched.h>
 
