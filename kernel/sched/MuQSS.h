@@ -834,6 +834,8 @@ unsigned int uclamp_rq_util_with(struct rq __maybe_unused *rq, unsigned int util
 	return util;
 }
 
+static inline bool uclamp_rq_is_capped(struct rq *rq) { return false; }
+
 static inline bool uclamp_is_used(void)
 {
 	return false;
