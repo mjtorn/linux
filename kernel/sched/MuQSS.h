@@ -54,6 +54,7 @@
 
 #include "cpupri.h"
 
+#include <trace/events/power.h>
 #include <trace/events/sched.h>
 
 #ifdef CONFIG_SCHED_DEBUG
