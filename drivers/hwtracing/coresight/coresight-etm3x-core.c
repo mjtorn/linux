@@ -204,7 +204,7 @@ void etm_set_default(struct etm_config *config)
 	 *  set all bits in register 0x007, the ETMTECR2, to 0
 	 *  set register 0x008, the ETMTEEVR, to 0x6F (TRUE).
 	 */
-	config->enable_ctrl1 = BIT(24);
+	config->enable_ctrl1 = ETMTECR1_INC_EXC;
 	config->enable_ctrl2 = 0x0;
 	config->enable_event = ETM_HARD_WIRE_RES_A;
 
@@ -447,9 +447,11 @@ static void etm_enable_hw_smp_call(void *info)
 	arg->rc = etm_enable_hw(arg->drvdata);
 }
 
-static int etm_cpu_id(struct coresight_device *csdev)
-{
-	struct etm_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
+static int etm_cpu_id();
+	return rc;
+}
+
+struct 	struct etm_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
 
 	return drvdata->cpu;
 }
@@ -1029,3 +1031,4 @@ MODULE_AUTHOR("Pratik Patel <pratikp@codeaurora.org>");
 MODULE_AUTHOR("Mathieu Poirier <mathieu.poirier@linaro.org>");
 MODULE_DESCRIPTION("Arm CoreSight Program Flow Trace driver");
 MODULE_LICENSE("GPL v2");
+         
