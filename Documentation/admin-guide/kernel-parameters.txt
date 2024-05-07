@@ -2938,6 +2938,10 @@
 	locktorture.torture_type= [KNL]
 			Specify the locking implementation to test.
 
+	locktorture.writer_fifo= [KNL]
+			Run the write-side locktorture kthreads at
+			sched_set_fifo() real-time priority.
+
 	locktorture.verbose= [KNL]
 			Enable additional printk() statements.
 
@@ -5781,6 +5785,13 @@
 			This feature may be more efficiently disabled
 			using the csdlock_debug- kernel parameter.
 
+	smp.panic_on_ipistall= [KNL]
+			If a csd_lock_timeout extends for more than
+			the specified number of milliseconds, panic the
+			system.  By default, let CSD-lock acquisition
+			take as long as they take.  Specifying 300,000
+			for this value provides a 5-minute timeout.
+
 	smsc-ircc2.nopnp	[HW] Don't use PNP to discover SMC devices
 	smsc-ircc2.ircc_cfg=	[HW] Device configuration I/O port
 	smsc-ircc2.ircc_sir=	[HW] SIR base I/O port
@@ -6274,10 +6285,6 @@
 	thermal.crt=	[HW,ACPI]
 			-1: disable all critical trip points in all thermal zones
 			<degrees C>: override all critical trip points
-
-	thermal.nocrt=	[HW,ACPI]
-			Set to disable actions on ACPI thermal zone
-			critical and hot trip points.
 
 	thermal.off=	[HW,ACPI]
 			1: disable ACPI thermal control
