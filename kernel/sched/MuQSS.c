@@ -6745,8 +6745,7 @@ int cpuset_cpumask_can_shrink(const struct cpumask __maybe_unused *cur,
 	return 1;
 }
 
-int task_can_attach(struct task_struct *p,
-		    const struct cpumask *cs_cpus_allowed)
+int task_can_attach(struct task_struct *p)
 {
 	int ret = 0;
 
