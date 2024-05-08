@@ -36,19 +36,26 @@
 
 #include "autogroup.h"
 #include "stats.h"
+
+#ifndef CONFIG_SCHED_MUQSS
 #include "pelt.h"
+#endif
 
 /* Source code modules: */
 
 #include "idle.c"
 
+#ifndef CONFIG_SCHED_MUQSS
 #include "rt.c"
 
 #ifdef CONFIG_SMP
 # include "cpudeadline.c"
 # include "pelt.c"
 #endif
+#endif
 
 #include "cputime.c"
+#ifndef CONFIG_SCHED_MUQSS
 #include "deadline.c"
+#endif
 

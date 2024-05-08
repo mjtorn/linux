@@ -610,6 +610,7 @@ int compat_elf_check_arch(const struct elf32_hdr *hdr)
 	if (!((hdr)->e_flags & EF_ARM_EABI_MASK))
 		return false;
 
+#ifndef CONFIG_SCHED_MUQSS
 	/*
 	 * Prevent execve() of a 32-bit program from a deadline task
 	 * if the restricted affinity mask would be inadmissible on an
@@ -617,6 +618,9 @@ int compat_elf_check_arch(const struct elf32_hdr *hdr)
 	 */
 	return !static_branch_unlikely(&arm64_mismatched_32bit_el0) ||
 	       !dl_task_check_affinity(current, system_32bit_el0_cpumask());
+#else
+	return true;
+#endif
 }
 #endif
 
@@ -630,6 +634,7 @@ void arch_setup_new_exec(void)
 	if (is_compat_task()) {
 		mmflags = MMCF_AARCH32;
 
+#ifndef CONFIG_SCHED_MUQSS
 		/*
 		 * Restrict the CPU affinity mask for a 32-bit task so that
 		 * it contains only 32-bit-capable CPUs.
@@ -643,6 +648,7 @@ void arch_setup_new_exec(void)
 			force_compatible_cpus_allowed_ptr(current);
 	} else if (static_branch_unlikely(&arm64_mismatched_32bit_el0)) {
 		relax_compatible_cpus_allowed_ptr(current);
+#endif
 	}
 
 	current->mm->context.flags = mmflags;

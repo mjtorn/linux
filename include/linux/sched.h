@@ -39,6 +39,10 @@
 #include <linux/livepatch_sched.h>
 #include <asm/kmap_size.h>
 
+#ifdef CONFIG_SCHED_MUQSS
+#include <linux/skip_list.h>
+#endif
+
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
 struct bio_list;
@@ -762,8 +766,10 @@ struct task_struct {
 	unsigned int			flags;
 	unsigned int			ptrace;
 
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) || defined(CONFIG_SCHED_MUQSS)
 	int				on_cpu;
+#endif
+#ifdef CONFIG_SMP
 	struct __call_single_node	wake_entry;
 	unsigned int			wakee_flips;
 	unsigned long			wakee_flip_decay_ts;
@@ -785,6 +791,21 @@ struct task_struct {
 	int				static_prio;
 	int				normal_prio;
 	unsigned int			rt_priority;
+#ifdef CONFIG_SCHED_MUQSS
+	int time_slice;
+	u64 deadline;
+	skiplist_node node; /* Skip list node */
+	u64 last_ran;
+	u64 sched_time; /* sched_clock time spent running */
+#ifdef CONFIG_SMT_NICE
+	int smt_bias; /* Policy/nice level bias across smt siblings */
+#endif
+#ifdef CONFIG_HOTPLUG_CPU
+	bool zerobound; /* Bound to CPU0 for hotplug */
+#endif
+	unsigned long rt_timeout;
+	struct sched_dl_entity		dl; /* FIXME hack for MuQSS */
+#else /* CONFIG_SCHED_MUQSS */
 
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
@@ -795,6 +816,7 @@ struct task_struct {
 	struct rb_node			core_node;
 	unsigned long			core_cookie;
 	unsigned int			core_occupation;
+#endif
 #endif
 
 #ifdef CONFIG_CGROUP_SCHED
@@ -1016,6 +1038,10 @@ struct task_struct {
 #ifdef CONFIG_ARCH_HAS_SCALED_CPUTIME
 	u64				utimescaled;
 	u64				stimescaled;
+#endif
+#ifdef CONFIG_SCHED_MUQSS
+	/* Unbanked cpu time */
+	unsigned long utime_ns, stime_ns;
 #endif
 	u64				gtime;
 	struct prev_cputime		prev_cputime;
@@ -1547,6 +1573,40 @@ struct task_struct {
 	 * Do not put anything below here!
 	 */
 };
+
+#ifdef CONFIG_SCHED_MUQSS
+#define tsk_seruntime(t)		((t)->sched_time)
+#define tsk_rttimeout(t)		((t)->rt_timeout)
+
+static inline void tsk_cpus_current(struct task_struct *p)
+{
+}
+
+void print_scheduler_version(void);
+
+static inline bool iso_task(struct task_struct *p)
+{
+	return (p->policy == SCHED_ISO);
+}
+#else /* CFS */
+#define tsk_seruntime(t)	((t)->se.sum_exec_runtime)
+#define tsk_rttimeout(t)	((t)->rt.timeout)
+
+static inline void tsk_cpus_current(struct task_struct *p)
+{
+	p->nr_cpus_allowed = current->nr_cpus_allowed;
+}
+
+static inline void print_scheduler_version(void)
+{
+	printk(KERN_INFO "CFS CPU scheduler.\n");
+}
+
+static inline bool iso_task(struct task_struct *p)
+{
+	return false;
+}
+#endif /* CONFIG_SCHED_MUQSS */
 
 static inline struct pid *task_pid(struct task_struct *task)
 {
