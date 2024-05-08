@@ -5302,7 +5302,7 @@ recheck:
 	}
 
 	if (pi)
-		cpuset_read_lock();
+		cpuset_lock();
 
 	/*
 	 * Make sure no PI-waiters arrive (or leave) while we are
@@ -5338,7 +5338,7 @@ recheck:
 		policy = oldpolicy = -1;
 		task_rq_unlock(rq, p, &rf);
 		if (pi)
-			cpuset_read_unlock();
+			cpuset_unlock();
 		goto recheck;
 	}
 	p->sched_reset_on_fork = reset_on_fork;
@@ -5350,7 +5350,7 @@ recheck:
 	task_rq_unlock(rq, p, &rf);
 
 	if (pi) {
-		cpuset_read_unlock();
+		cpuset_unlock();
 		rt_mutex_adjust_pi(p);
 	}
 	preempt_enable();
@@ -5360,7 +5360,7 @@ out:
 unlock:
 	task_rq_unlock(rq, p, &rf);
 	if (pi)
-		cpuset_read_unlock();
+		cpuset_unlock();
 	return retval;
 }
 
