@@ -7142,7 +7142,7 @@ static struct ctl_table sd_ctl_root[] = {
 	{
 		.procname	= "kernel",
 		.mode		= 0555,
-		.child		= sd_ctl_dir,
+		.type		= SYSCTL_TABLE_TYPE_DEFAULT,
 	},
 	{}
 };
@@ -7166,10 +7166,7 @@ static void sd_free_ctl_entry(struct ctl_table **tablep)
 	 * static strings and all have proc handlers.
 	 */
 	for (entry = *tablep; entry->mode; entry++) {
-		if (entry->child)
-			sd_free_ctl_entry(&entry->child);
-		if (entry->proc_handler == NULL)
-			kfree(entry->procname);
+        unregister_sysctl_table(entry->header);
 	}
 
 	kfree(*tablep);
