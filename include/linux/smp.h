@@ -131,7 +131,7 @@ extern void arch_smp_send_reschedule(int cpu);
  * callsite IP should be sufficient for root-causing IPIs sent from here.
  */
 #define smp_send_reschedule(cpu) ({		  \
-	trace_ipi_send_cpu(cpu, _RET_IP_, NULL);  \
+	trace_csd_queue_cpu(cpu, _RET_IP_, NULL, NULL);  \
 	arch_smp_send_reschedule(cpu);		  \
 })
 
